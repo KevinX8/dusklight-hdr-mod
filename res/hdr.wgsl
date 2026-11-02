@@ -212,13 +212,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Perceptual boost / color boost (SK pqBoostParams "optimization for both" path).
     if (params.pb_enable != 0u && params.pb.x > 0.1) {
-        let xyz = max(rec709_to_xyz(c), vec3(0.0));
-        let luma = max(xyz.y, 0.0);
+        // The boost curve is only sane for SDR-range input: far above it each XYZ channel blows up
+        // differently (purple/black). Scale overbright input (additive blends, lighting gain) back
+        // under 2.0, boost, and scale up again; SDR-range input is untouched.
+        let xyz_in = max(rec709_to_xyz(c), vec3(0.0));
+        let s = max(1.0, max(xyz_in.x, max(xyz_in.y, xyz_in.z)) * 0.5);
+        let xyz = xyz_in / s;
+        let luma = xyz.y;
         if (luma > 0.0) {
             let boosted = pq_to_linear4(
                 linear_to_pq4(vec4(xyz, luma), params.pb.x) * params.pb.z,
                 params.pb.y) / params.pb.w;
-            c = xyz_to_rec709(mix(xyz * boosted.www / luma, boosted.rgb, params.color_boost));
+            c = xyz_to_rec709(mix(xyz * boosted.www / luma, boosted.rgb, params.color_boost)) * s;
         }
     }
 
