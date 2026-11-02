@@ -131,13 +131,13 @@ fn linear_to_pq4(x: vec4<f32>, max_pq: f32) -> vec4<f32> {
 
 fn pq_to_linear3(x: vec3<f32>, max_pq: f32) -> vec3<f32> {
     let y = pow(max(x, vec3(0.0)), vec3(PQ_RCP_M));
-    let nd = max(y - PQ_C1, vec3(0.0)) / max(PQ_C2 - PQ_C3 * y, PQ_DEN_MIN);
+    let nd = max(y - PQ_C1, vec3(0.0)) / max(PQ_C2 - PQ_C3 * y, vec3(PQ_DEN_MIN));
     return pow(nd, vec3(PQ_RCP_N)) * max_pq;
 }
 
 fn pq_to_linear4(x: vec4<f32>, max_pq: f32) -> vec4<f32> {
     let y = pow(max(x, vec4(0.0)), vec4(PQ_RCP_M));
-    let nd = max(y - PQ_C1, vec4(0.0)) / max(PQ_C2 - PQ_C3 * y, PQ_DEN_MIN);
+    let nd = max(y - PQ_C1, vec4(0.0)) / max(PQ_C2 - PQ_C3 * y, vec4(PQ_DEN_MIN));
     return pow(nd, vec4(PQ_RCP_N)) * max_pq;
 }
 
