@@ -1,7 +1,7 @@
 {
-  "id": "com.example.my_mod",
-  "name": "My Mod",
+  "id": "com.kevinx8.hdr",
+  "name": "HDR+ Grade",
   "version": "@PROJECT_VERSION@",
-  "author": "You",
-  "description": "An example Dusklight mod"
+  "author": "kevinx8",
+  "description": "Special K-style SDR to HDR grade: perceptual/color boost, saturation, gamut expansion, overbright unclip. Requires HDR Output enabled in Graphics settings."
 }
