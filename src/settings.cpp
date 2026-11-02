@@ -143,8 +143,8 @@ ModResult build_controls_tab(
         "Surfaces lit past white (sun, torches, lanterns) keep that extra brightness as HDR "
         "highlights. Materials still render exactly as on GameCube.");
     add_number(left, "Glow Strength", cvar_glow_strength, 0, 2000, 50,
-        "Restores the color and brightness of stacked glowing effects (fire, magic, sparks) that "
-        "the GameCube clipped to white (x1000; 1000 = full recovery, 0 = off).");
+        "Restores the brightness of stacked glowing effects (fire, magic, sparks) that the "
+        "GameCube clipped, keeping their on-screen color (x1000; 1000 = full, 0 = off).");
 
     static const char* kDebugOptions[] = {
         "Full grade", "1: EOTF", "2: Boost", "3: Saturation", "4: Gamut", "5: Clamp", "6: Input check",

@@ -226,7 +226,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var c = sanitize3(sample.rgb);
 
     // Restore what the GameCube's 8-bit frame clipped, in its gamma space: the unclamped lighting
-    // (frame * gain) and stacked additive glow color (per channel, up to the glow sum).
+    // (frame * gain) and the brightness of stacked additive glow. Glow keeps the frame's hue: effects
+    // were authored for their clipped look (red-orange layers saturate to a yellow-white core).
     if (params.side_enabled != 0u) {
         let px = vec2<i32>(in.pos.xy);
         let gain = max(sanitize3(textureLoad(gain_tex, px, 0).rgb), vec3(1.0));
@@ -234,11 +235,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         if (params.debug_stage == 7u) {
             let lum = vec3(dot(c, vec3(0.2126, 0.7152, 0.0722)) * 0.3);
             let g_ex = min(dot(gain - vec3(1.0), vec3(1.0 / 3.0)), 1.0);
-            let w_ex = min(dot(max(glow - c, vec3(0.0)), vec3(1.0 / 3.0)), 1.0);
+            let w_ex = min(max(glow.x, max(glow.y, glow.z)) / max(max(c.x, max(c.y, c.z)), 0.0001) - 1.0, 1.0);
             return encode_out(max(lum, vec3(g_ex, 0.0, w_ex)) * params.luma_scale, 1.0);
         }
         c = c * gain;
-        c = c + max(glow - c, vec3(0.0)) * params.glow_strength;
+        let glow_k = max(1.0, max(glow.x, max(glow.y, glow.z)) / max(max(c.x, max(c.y, c.z)), 0.0001));
+        c = c * mix(1.0, glow_k, params.glow_strength);
     }
 
     let max_rgb = max(1.0, max(abs(c.x), max(abs(c.y), abs(c.z))));
