@@ -194,10 +194,10 @@ void on_frame_after_hud(ModContext*, const GfxStageContext*, void*) {
     params.pb[1] = hdr::cvar_int(hdr::cvar_pb1, 100) / 1000.0f;
     params.pb[2] = hdr::cvar_int(hdr::cvar_pb2, 1273) / 1000.0f;
     params.pb[3] = hdr::cvar_int(hdr::cvar_pb3, 500) / 1000.0f;
-    params.color_boost = hdr::cvar_int(hdr::cvar_color_boost, 0) / 1000.0f;
-    params.saturation = hdr::cvar_int(hdr::cvar_saturation, 950) / 1000.0f;
-    params.gamut = hdr::cvar_int(hdr::cvar_gamut, 0) / 1000.0f;
-    params.luma_scale = hdr::cvar_int(hdr::cvar_paper_white, 160) / 80.0f;
+    params.color_boost = hdr::cvar_int(hdr::cvar_color_boost, 333) / 1000.0f;
+    params.saturation = hdr::cvar_int(hdr::cvar_saturation, 1000) / 1000.0f;
+    params.gamut = hdr::cvar_int(hdr::cvar_gamut, 10) / 1000.0f;
+    params.luma_scale = hdr::cvar_int(hdr::cvar_paper_white, 200) / 80.0f;
     params.debug_stage = static_cast<uint32_t>(hdr::cvar_int(hdr::cvar_debug_view, 0));
 
     GfxRange uniformRange{0, 0};
@@ -213,7 +213,7 @@ void on_frame_after_hud(ModContext*, const GfxStageContext*, void*) {
     frameDesc.scene_linear = false; // encode_out in hdr.wgsl keeps the engine's gamma convention
     frameDesc.unclip_lighting = hdr::cvar_bool(hdr::cvar_unclip_lighting, false);
     frameDesc.unclip_tev = hdr::cvar_bool(hdr::cvar_unclip_tev, false);
-    frameDesc.paper_white_nits = static_cast<float>(hdr::cvar_int(hdr::cvar_paper_white, 160));
+    frameDesc.paper_white_nits = static_cast<float>(hdr::cvar_int(hdr::cvar_paper_white, 200));
     frameDesc.peak_nits = static_cast<float>(hdr::cvar_int(hdr::cvar_peak, 1000));
     svc_gfx->set_hdr_frame(mod_ctx, &frameDesc);
 }

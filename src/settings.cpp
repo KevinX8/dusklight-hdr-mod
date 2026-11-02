@@ -198,16 +198,16 @@ ModResult settings_register(ModError* error) {
         int64_t def;
         ConfigVarHandle& handle;
     } ints[] = {
-        {"paperWhite", 160, cvar_paper_white},
+        {"paperWhite", 200, cvar_paper_white},
         {"peak", 1000, cvar_peak},
         {"eotf", 0, cvar_eotf},
         {"pb0", 1000, cvar_pb0},
         {"pb1", 100, cvar_pb1},
         {"pb2", 1273, cvar_pb2},
         {"pb3", 500, cvar_pb3},
-        {"colorBoost", 0, cvar_color_boost},
-        {"saturation", 950, cvar_saturation},
-        {"gamut", 0, cvar_gamut},
+        {"colorBoost", 333, cvar_color_boost},
+        {"saturation", 1000, cvar_saturation},
+        {"gamut", 10, cvar_gamut},
         {"debugView", 0, cvar_debug_view},
     };
     for (auto& var : ints) {
