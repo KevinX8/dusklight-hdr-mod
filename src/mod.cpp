@@ -2,9 +2,9 @@
 //
 // When the engine runs in an HDR output mode, the composed frame (after HUD) is resolved, run
 // through a Special K-style grade in res/hdr.wgsl (EOTF, perceptual/color boost, saturation,
-// gamut expansion) and written back gamma-encoded relative to paper white, so the engine's
-// normal HDR decode restores the graded values and SDR copies of the frame (menu backdrops)
-// stay valid. The mod passes its paper white/peak to the engine via set_hdr_frame.
+// gamut expansion) into a float texture, gamma-encoded relative to paper white, which the engine
+// presents instead of its 8-bit game frame (set_hdr_frame scene_texture) and decodes with the
+// paper white/peak passed alongside. The game itself renders and blends exactly as in SDR.
 // With HDR output off the mod idles.
 
 #include "mods/service.hpp"
@@ -16,7 +16,6 @@
 #include "mods/svc/ui.h"
 #include "settings.hpp"
 
-#include <atomic>
 #include <cstddef>
 #include <cstring>
 #include <webgpu/webgpu.h>
@@ -35,11 +34,22 @@ GfxDeviceInfo g_deviceInfo = GFX_DEVICE_INFO_INIT;
 WGPUSampler g_sampler = nullptr;
 WGPURenderPipeline g_pipeline = nullptr;
 WGPUBindGroupLayout g_bindLayout = nullptr;
-uint64_t g_layoutKey = 0;
-GfxDrawTypeHandle g_drawType = 0;
+GfxComputeTypeHandle g_gradeTask = 0;
 GfxStageHookHandle g_frameHook = 0;
 bool g_warnedResolve = false;
-std::atomic<bool> g_warnedPipeline{false};
+
+// The graded frame lives in a float texture the engine presents (the game frame is 8-bit).
+constexpr WGPUTextureFormat kTargetFormat = WGPUTextureFormat_RGBA16Float;
+struct Target {
+    WGPUTexture texture = nullptr;
+    WGPUTextureView view = nullptr;
+    uint32_t width = 0;
+    uint32_t height = 0;
+};
+Target g_target;
+// shortcut: the previous target survives one resize to cover frames still in flight; a second
+// resize within a frame or two could free one in use. Upgrade to frame-counted retirement if seen.
+Target g_retired;
 
 // Must match struct Params in res/hdr.wgsl.
 struct alignas(16) GradeParams {
@@ -57,11 +67,44 @@ static_assert(offsetof(GradeParams, pb) == 16 && offsetof(GradeParams, luma_scal
               offsetof(GradeParams, debug_stage) == 48 && sizeof(GradeParams) == 64,
     "GradeParams must match the WGSL Params layout");
 
-struct DrawPayload {
+struct GradePayload {
     WGPUTextureView color;
+    WGPUTextureView target;
     uint32_t uniform_offset;
     uint32_t uniform_size;
 };
+
+void release_target(Target& target) {
+    if (target.view != nullptr) {
+        wgpuTextureViewRelease(target.view);
+    }
+    if (target.texture != nullptr) {
+        wgpuTextureRelease(target.texture);
+    }
+    target = {};
+}
+
+bool ensure_target(uint32_t width, uint32_t height) {
+    if (g_target.texture != nullptr && g_target.width == width && g_target.height == height) {
+        return true;
+    }
+    release_target(g_retired);
+    g_retired = g_target;
+    g_target = {};
+    WGPUTextureDescriptor desc = WGPU_TEXTURE_DESCRIPTOR_INIT;
+    desc.label = {"HDR graded frame", WGPU_STRLEN};
+    desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+    desc.size = {width, height, 1};
+    desc.format = kTargetFormat;
+    g_target.texture = wgpuDeviceCreateTexture(g_deviceInfo.device, &desc);
+    if (g_target.texture == nullptr) {
+        return false;
+    }
+    g_target.view = wgpuTextureCreateView(g_target.texture, nullptr);
+    g_target.width = width;
+    g_target.height = height;
+    return g_target.view != nullptr;
+}
 
 WGPUShaderModule create_shader_module(const char* label, const ResourceBuffer& source) {
     WGPUShaderSourceWGSL wgsl = WGPU_SHADER_SOURCE_WGSL_INIT;
@@ -72,82 +115,44 @@ WGPUShaderModule create_shader_module(const char* label, const ResourceBuffer& s
     return wgpuDeviceCreateShaderModule(g_deviceInfo.device, &moduleDesc);
 }
 
-void release_pipeline() {
-    if (g_pipeline != nullptr) {
-        wgpuRenderPipelineRelease(g_pipeline);
-        g_pipeline = nullptr;
-    }
-    if (g_bindLayout != nullptr) {
-        wgpuBindGroupLayoutRelease(g_bindLayout);
-        g_bindLayout = nullptr;
-    }
-    g_layoutKey = 0;
-}
-
-// Rebuild when the frame pass layout changes (resolution, format, MSAA, sample count).
-bool ensure_pipeline(const GfxRenderTargetLayout& layout) {
-    if (g_pipeline != nullptr && g_layoutKey == layout.key) {
-        return true;
-    }
-    release_pipeline();
-
+bool build_pipeline() {
     WGPUShaderModule module = create_shader_module("HDR grade", g_shaderSource);
     if (module == nullptr) {
         return false;
     }
-
-    WGPUColorTargetState colorTargets[GFX_MAX_COLOR_ATTACHMENTS];
-    const uint32_t colorTargetCount =
-        gfx_init_color_target_states(&layout, colorTargets, nullptr, WGPUColorWriteMask_All);
+    WGPUColorTargetState colorTarget = WGPU_COLOR_TARGET_STATE_INIT;
+    colorTarget.format = kTargetFormat;
     WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
     fragment.module = module;
     fragment.entryPoint = {"fs_main", WGPU_STRLEN};
-    fragment.targetCount = colorTargetCount;
-    fragment.targets = colorTargets;
-    // Depth state must match the frame pass when it has one; the composed frame target
-    // usually has no depth attachment at all.
-    WGPUDepthStencilState depthStencil = WGPU_DEPTH_STENCIL_STATE_INIT;
-    const bool hasDepth = layout.depth_stencil_format != WGPUTextureFormat_Undefined;
-    depthStencil.format = layout.depth_stencil_format;
-    depthStencil.depthWriteEnabled = WGPUOptionalBool_False;
-    depthStencil.depthCompare = WGPUCompareFunction_Always;
-
+    fragment.targetCount = 1;
+    fragment.targets = &colorTarget;
     WGPURenderPipelineDescriptor pipelineDesc = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
     pipelineDesc.label = {"HDR grade", WGPU_STRLEN};
     pipelineDesc.vertex.module = module;
     pipelineDesc.vertex.entryPoint = {"vs_main", WGPU_STRLEN};
     pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-    pipelineDesc.depthStencil = hasDepth ? &depthStencil : nullptr;
-    pipelineDesc.multisample.count = layout.sample_count;
     pipelineDesc.fragment = &fragment;
     g_pipeline = wgpuDeviceCreateRenderPipeline(g_deviceInfo.device, &pipelineDesc);
     wgpuShaderModuleRelease(module);
     if (g_pipeline == nullptr) {
-        g_warnedPipeline.store(true, std::memory_order_relaxed);
-        release_pipeline();
         return false;
     }
     g_bindLayout = wgpuRenderPipelineGetBindGroupLayout(g_pipeline, 0);
-    if (g_bindLayout == nullptr) {
-        release_pipeline();
-        return false;
-    }
-    g_layoutKey = layout.key;
-    return true;
+    return g_bindLayout != nullptr;
 }
 
-// Render worker: fullscreen grade of the resolved frame, no blend.
-void on_draw(
-    ModContext*, const GfxDrawContext* ctx, const void* payload, size_t payloadSize, void*) {
-    if (payloadSize != sizeof(DrawPayload) || !ensure_pipeline(ctx->layout)) {
+// Render worker, between scene passes: grade the frame snapshot into the float target.
+void on_grade(ModContext*, const GfxComputeContext* ctx, const void* payload, size_t payloadSize,
+    void*) {
+    if (payloadSize != sizeof(GradePayload)) {
         return;
     }
-    DrawPayload data;
+    GradePayload data;
     std::memcpy(&data, payload, sizeof(data));
-    if (data.color == nullptr) {
+    if (data.color == nullptr || data.target == nullptr) {
         return;
     }
-
     const WGPUBindGroupEntry entries[3] = {
         {.binding = 0,
             .buffer = ctx->uniform_buffer,
@@ -164,20 +169,31 @@ void on_draw(
     if (bindGroup == nullptr) {
         return;
     }
-    wgpuRenderPassEncoderSetPipeline(ctx->pass, g_pipeline);
-    wgpuRenderPassEncoderSetBindGroup(ctx->pass, 0, bindGroup, 0, nullptr);
-    wgpuRenderPassEncoderDraw(ctx->pass, 3, 1, 0, 0);
+    WGPURenderPassColorAttachment attachment = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+    attachment.view = data.target;
+    attachment.loadOp = WGPULoadOp_Clear;
+    attachment.storeOp = WGPUStoreOp_Store;
+    WGPURenderPassDescriptor passDesc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+    passDesc.label = {"HDR grade", WGPU_STRLEN};
+    passDesc.colorAttachmentCount = 1;
+    passDesc.colorAttachments = &attachment;
+    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(ctx->encoder, &passDesc);
+    wgpuRenderPassEncoderSetPipeline(pass, g_pipeline);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+    wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+    wgpuRenderPassEncoderEnd(pass);
+    wgpuRenderPassEncoderRelease(pass);
     wgpuBindGroupRelease(bindGroup);
 }
 
-// Game thread, after HUD: grade the frame and hand the engine the matching paper white.
+// Game thread, after HUD: grade the frame and have the engine present the graded texture.
 void on_frame_after_hud(ModContext*, const GfxStageContext*, void*) {
     GfxResolveDesc resolveDesc = GFX_RESOLVE_DESC_INIT;
     resolveDesc.color = true;
     resolveDesc.depth = false;
     GfxResolvedTargets resolved = GFX_RESOLVED_TARGETS_INIT;
     if (svc_gfx->resolve_pass(mod_ctx, &resolveDesc, &resolved) != MOD_OK ||
-        resolved.color == nullptr)
+        resolved.color == nullptr || !ensure_target(resolved.width, resolved.height))
     {
         if (!g_warnedResolve) {
             g_warnedResolve = true;
@@ -204,8 +220,9 @@ void on_frame_after_hud(ModContext*, const GfxStageContext*, void*) {
     if (svc_gfx->push_uniform(mod_ctx, &params, sizeof(params), &uniformRange) != MOD_OK) {
         return;
     }
-    const DrawPayload drawPayload{resolved.color, uniformRange.offset, uniformRange.size};
-    if (svc_gfx->push_draw(mod_ctx, g_drawType, &drawPayload, sizeof(drawPayload)) != MOD_OK) {
+    const GradePayload gradePayload{
+        resolved.color, g_target.view, uniformRange.offset, uniformRange.size};
+    if (svc_gfx->push_compute(mod_ctx, g_gradeTask, &gradePayload, sizeof(gradePayload)) != MOD_OK) {
         return;
     }
 
@@ -214,6 +231,7 @@ void on_frame_after_hud(ModContext*, const GfxStageContext*, void*) {
     frameDesc.unclip_lighting = hdr::cvar_bool(hdr::cvar_unclip_lighting, false);
     frameDesc.paper_white_nits = static_cast<float>(hdr::cvar_int(hdr::cvar_paper_white, 200));
     frameDesc.peak_nits = static_cast<float>(hdr::cvar_int(hdr::cvar_peak, 1000));
+    frameDesc.scene_texture = g_target.texture;
     svc_gfx->set_hdr_frame(mod_ctx, &frameDesc);
 }
 
@@ -255,11 +273,14 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
         return mods::set_error(error, MOD_ERROR, "failed to create sampler");
     }
 
-    GfxDrawTypeDesc drawDesc = GFX_DRAW_TYPE_DESC_INIT;
-    drawDesc.label = "HDR grade";
-    drawDesc.draw = on_draw;
-    if (svc_gfx->register_draw_type(mod_ctx, &drawDesc, &g_drawType) != MOD_OK) {
-        return mods::set_error(error, MOD_ERROR, "failed to register draw type");
+    if (!build_pipeline()) {
+        return mods::set_error(error, MOD_ERROR, "failed to create HDR grade pipeline");
+    }
+    GfxComputeTypeDesc gradeDesc = GFX_COMPUTE_TYPE_DESC_INIT;
+    gradeDesc.label = "HDR grade";
+    gradeDesc.callback = on_grade;
+    if (svc_gfx->register_compute_type(mod_ctx, &gradeDesc, &g_gradeTask) != MOD_OK) {
+        return mods::set_error(error, MOD_ERROR, "failed to register grade task");
     }
     GfxStageHookDesc stageDesc = GFX_STAGE_HOOK_DESC_INIT;
     stageDesc.callback = on_frame_after_hud;
@@ -274,15 +295,21 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
 }
 
 MOD_EXPORT ModResult mod_update(ModError*) {
-    if (g_warnedPipeline.exchange(false, std::memory_order_relaxed)) {
-        svc_log->warn(mod_ctx, "HDR grade pipeline creation failed; grade idle");
-    }
     return MOD_OK;
 }
 
 MOD_EXPORT ModResult mod_shutdown(ModError*) {
     svc_resource->free(mod_ctx, &g_shaderSource);
-    release_pipeline();
+    release_target(g_target);
+    release_target(g_retired);
+    if (g_bindLayout != nullptr) {
+        wgpuBindGroupLayoutRelease(g_bindLayout);
+        g_bindLayout = nullptr;
+    }
+    if (g_pipeline != nullptr) {
+        wgpuRenderPipelineRelease(g_pipeline);
+        g_pipeline = nullptr;
+    }
     if (g_sampler != nullptr) {
         wgpuSamplerRelease(g_sampler);
         g_sampler = nullptr;

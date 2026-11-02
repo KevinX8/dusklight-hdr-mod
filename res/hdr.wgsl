@@ -199,6 +199,22 @@ fn vs_main(@builtin(vertex_index) vtx_idx: u32) -> VertexOutput {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sample = textureSample(scene_tex, scene_samp, in.uv);
     let alpha = clamp(sample.a, 0.0, 1.0);
+    if (params.debug_stage == 6u) {
+        // Input check: green = NaN, yellow = Inf, red = negative, blue = above 1, else gray.
+        let mag = vec3(bitcast<u32>(sample.r), bitcast<u32>(sample.g), bitcast<u32>(sample.b)) &
+            vec3(0x7fffffffu);
+        var flag = vec3(dot(abs(sample.rgb), vec3(0.2126, 0.7152, 0.0722)));
+        if (any(mag > vec3(0x7f800000u))) {
+            flag = vec3(0.0, 1.0, 0.0);
+        } else if (any(mag == vec3(0x7f800000u))) {
+            flag = vec3(1.0, 1.0, 0.0);
+        } else if (any(sample.rgb < vec3(0.0))) {
+            flag = vec3(1.0, 0.0, 0.0);
+        } else if (any(sample.rgb > vec3(1.0))) {
+            flag = vec3(0.0, 0.0, 1.0);
+        }
+        return encode_out(clamp(flag, vec3(0.0), vec3(1.0)) * params.luma_scale, 1.0);
+    }
 
     // SK main: orig_color = abs(color); sanitize; normalize past 1.0 through the EOTF.
     let orig_color = abs(sample.rgb);

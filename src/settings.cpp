@@ -143,7 +143,7 @@ ModResult build_controls_tab(
         "highlights. Materials still render exactly as on GameCube.");
 
     static const char* kDebugOptions[] = {
-        "Full grade", "1: EOTF", "2: Boost", "3: Saturation", "4: Gamut", "5: Clamp"};
+        "Full grade", "1: EOTF", "2: Boost", "3: Saturation", "4: Gamut", "5: Clamp", "6: Input check"};
     control = UI_CONTROL_DESC_INIT;
     control.kind = UI_CONTROL_SELECT;
     control.label = "Debug view";
@@ -152,7 +152,7 @@ ModResult build_controls_tab(
     control.binding = UI_BINDING_CONFIG_VAR;
     control.config_var = cvar_debug_view;
     control.options = kDebugOptions;
-    control.option_count = 6;
+    control.option_count = 7;
     add_control(left, control);
     return MOD_OK;
 }
