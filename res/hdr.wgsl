@@ -34,6 +34,9 @@ const PQ_RCP_M = 0.012683313565541848;
 const PQ_C1 = 0.8359375;
 const PQ_C2 = 18.8515625;
 const PQ_C3 = 18.6875;
+// PQToLinear divides by C2 - C3*y, which reaches zero for inputs past the PQ range (overbright
+// unclipped surfaces) and would turn into NaN; keep it positive so they saturate instead.
+const PQ_DEN_MIN = 0.0001;
 
 // HLSL row-major matrices stored as WGSL columns (= transpose), so HLSL mul(M, v) is v * M here.
 const REC709_TO_XYZ = mat3x3<f32>(
@@ -128,13 +131,13 @@ fn linear_to_pq4(x: vec4<f32>, max_pq: f32) -> vec4<f32> {
 
 fn pq_to_linear3(x: vec3<f32>, max_pq: f32) -> vec3<f32> {
     let y = pow(max(x, vec3(0.0)), vec3(PQ_RCP_M));
-    let nd = max(y - PQ_C1, vec3(0.0)) / (PQ_C2 - PQ_C3 * y);
+    let nd = max(y - PQ_C1, vec3(0.0)) / max(PQ_C2 - PQ_C3 * y, PQ_DEN_MIN);
     return pow(nd, vec3(PQ_RCP_N)) * max_pq;
 }
 
 fn pq_to_linear4(x: vec4<f32>, max_pq: f32) -> vec4<f32> {
     let y = pow(max(x, vec4(0.0)), vec4(PQ_RCP_M));
-    let nd = max(y - PQ_C1, vec4(0.0)) / (PQ_C2 - PQ_C3 * y);
+    let nd = max(y - PQ_C1, vec4(0.0)) / max(PQ_C2 - PQ_C3 * y, PQ_DEN_MIN);
     return pow(nd, vec4(PQ_RCP_N)) * max_pq;
 }
 
