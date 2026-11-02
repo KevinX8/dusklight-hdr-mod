@@ -212,7 +212,6 @@ void on_frame_after_hud(ModContext*, const GfxStageContext*, void*) {
     GfxHdrFrameDesc frameDesc = GFX_HDR_FRAME_DESC_INIT;
     frameDesc.scene_linear = false; // encode_out in hdr.wgsl keeps the engine's gamma convention
     frameDesc.unclip_lighting = hdr::cvar_bool(hdr::cvar_unclip_lighting, false);
-    frameDesc.unclip_tev = hdr::cvar_bool(hdr::cvar_unclip_tev, false);
     frameDesc.paper_white_nits = static_cast<float>(hdr::cvar_int(hdr::cvar_paper_white, 200));
     frameDesc.peak_nits = static_cast<float>(hdr::cvar_int(hdr::cvar_peak, 1000));
     svc_gfx->set_hdr_frame(mod_ctx, &frameDesc);

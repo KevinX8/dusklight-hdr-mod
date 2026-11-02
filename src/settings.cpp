@@ -24,7 +24,6 @@ ConfigVarHandle cvar_color_boost = 0;
 ConfigVarHandle cvar_saturation = 0;
 ConfigVarHandle cvar_gamut = 0;
 ConfigVarHandle cvar_unclip_lighting = 0;
-ConfigVarHandle cvar_unclip_tev = 0;
 ConfigVarHandle cvar_debug_view = 0;
 
 int64_t cvar_int(ConfigVarHandle handle, int64_t default_value) {
@@ -140,9 +139,8 @@ ModResult build_controls_tab(
         "Expands bright saturated colors toward BT.2020 (x1000, 10 = 1%).");
 
     add_toggle(left, "Unclip Lighting", cvar_unclip_lighting,
-        "Lets game lighting go over 1.0 into HDR headroom.");
-    add_toggle(left, "Unclip TEV", cvar_unclip_tev,
-        "Lets TEV color/alpha operations go over 1.0 into HDR headroom.");
+        "Surfaces lit past white (sun, torches, lanterns) keep that extra brightness as HDR "
+        "highlights. Materials still render exactly as on GameCube.");
 
     static const char* kDebugOptions[] = {
         "Full grade", "1: EOTF", "2: Boost", "3: Saturation", "4: Gamut", "5: Clamp"};
@@ -222,7 +220,6 @@ ModResult settings_register(ModError* error) {
     } bools[] = {
         {"pbEnable", true, cvar_pb_enable},
         {"unclipLighting", false, cvar_unclip_lighting},
-        {"unclipTev", false, cvar_unclip_tev},
     };
     for (auto& var : bools) {
         if (register_bool(var.name, var.def, var.handle, error) != MOD_OK) {
