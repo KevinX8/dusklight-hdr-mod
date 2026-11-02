@@ -62,13 +62,18 @@ struct alignas(16) GradeParams {
     float gamut = 0.01f;
     float luma_scale = 2.5f;
     uint32_t debug_stage = 0;
+    uint32_t side_enabled = 0;
+    float glow_strength = 1.f;
 };
 static_assert(offsetof(GradeParams, pb) == 16 && offsetof(GradeParams, luma_scale) == 44 &&
-              offsetof(GradeParams, debug_stage) == 48 && sizeof(GradeParams) == 64,
+              offsetof(GradeParams, debug_stage) == 48 && offsetof(GradeParams, glow_strength) == 56 &&
+              sizeof(GradeParams) == 64,
     "GradeParams must match the WGSL Params layout");
 
 struct GradePayload {
     WGPUTextureView color;
+    WGPUTextureView gain; // engine side buffers, or the color snapshot as a placeholder
+    WGPUTextureView glow;
     WGPUTextureView target;
     uint32_t uniform_offset;
     uint32_t uniform_size;
@@ -153,17 +158,19 @@ void on_grade(ModContext*, const GfxComputeContext* ctx, const void* payload, si
     if (data.color == nullptr || data.target == nullptr) {
         return;
     }
-    const WGPUBindGroupEntry entries[3] = {
+    const WGPUBindGroupEntry entries[5] = {
         {.binding = 0,
             .buffer = ctx->uniform_buffer,
             .offset = data.uniform_offset,
             .size = data.uniform_size},
         {.binding = 1, .textureView = data.color},
         {.binding = 2, .sampler = g_sampler},
+        {.binding = 3, .textureView = data.gain},
+        {.binding = 4, .textureView = data.glow},
     };
     WGPUBindGroupDescriptor bindGroupDesc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
     bindGroupDesc.layout = g_bindLayout;
-    bindGroupDesc.entryCount = 3;
+    bindGroupDesc.entryCount = 5;
     bindGroupDesc.entries = entries;
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx->device, &bindGroupDesc);
     if (bindGroup == nullptr) {
@@ -215,13 +222,17 @@ void on_frame_after_hud(ModContext*, const GfxStageContext*, void*) {
     params.gamut = hdr::cvar_int(hdr::cvar_gamut, 10) / 1000.0f;
     params.luma_scale = hdr::cvar_int(hdr::cvar_paper_white, 200) / 80.0f;
     params.debug_stage = static_cast<uint32_t>(hdr::cvar_int(hdr::cvar_debug_view, 0));
+    const bool side = resolved.hdr_gain != nullptr && resolved.hdr_glow != nullptr;
+    params.side_enabled = side ? 1u : 0u;
+    params.glow_strength = hdr::cvar_int(hdr::cvar_glow_strength, 1000) / 1000.0f;
 
     GfxRange uniformRange{0, 0};
     if (svc_gfx->push_uniform(mod_ctx, &params, sizeof(params), &uniformRange) != MOD_OK) {
         return;
     }
-    const GradePayload gradePayload{
-        resolved.color, g_target.view, uniformRange.offset, uniformRange.size};
+    const GradePayload gradePayload{resolved.color, side ? resolved.hdr_gain : resolved.color,
+        side ? resolved.hdr_glow : resolved.color, g_target.view, uniformRange.offset,
+        uniformRange.size};
     if (svc_gfx->push_compute(mod_ctx, g_gradeTask, &gradePayload, sizeof(gradePayload)) != MOD_OK) {
         return;
     }

@@ -11,7 +11,9 @@ struct Params {
     saturation: f32,
     gamut: f32,       // expandGamut amount, 0 disables
     luma_scale: f32,  // paper_white_nits / 80
-    debug_stage: u32, // 0 = full; 1..5 = return after that stage
+    debug_stage: u32, // 0 = full; 1..5 = return after that stage; 6 input check; 7 side buffers
+    side_enabled: u32, // engine HDR side buffers bound (else the bindings are placeholders)
+    glow_strength: f32,
 };
 
 struct VertexOutput {
@@ -22,6 +24,9 @@ struct VertexOutput {
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var scene_tex: texture_2d<f32>;
 @group(0) @binding(2) var scene_samp: sampler;
+// Engine HDR side buffers, same size as the frame: lighting gain (rgb) and unsaturated additive glow (rgb).
+@group(0) @binding(3) var gain_tex: texture_2d<f32>;
+@group(0) @binding(4) var glow_tex: texture_2d<f32>;
 
 const FLOAT_MAX = 65504.0;          // float_MAX in Special K
 const FP16_MIN = 0.0000000596046448; // asfloat(0x33C00000)
@@ -219,6 +224,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // SK main: orig_color = abs(color); sanitize; normalize past 1.0 through the EOTF.
     let orig_color = abs(sample.rgb);
     var c = sanitize3(sample.rgb);
+
+    // Restore what the GameCube's 8-bit frame clipped, in its gamma space: the unclamped lighting
+    // (frame * gain) and stacked additive glow color (per channel, up to the glow sum).
+    if (params.side_enabled != 0u) {
+        let px = vec2<i32>(in.pos.xy);
+        let gain = max(sanitize3(textureLoad(gain_tex, px, 0).rgb), vec3(1.0));
+        let glow = max(sanitize3(textureLoad(glow_tex, px, 0).rgb), vec3(0.0));
+        if (params.debug_stage == 7u) {
+            let lum = vec3(dot(c, vec3(0.2126, 0.7152, 0.0722)) * 0.3);
+            let g_ex = min(dot(gain - vec3(1.0), vec3(1.0 / 3.0)), 1.0);
+            let w_ex = min(dot(max(glow - c, vec3(0.0)), vec3(1.0 / 3.0)), 1.0);
+            return encode_out(max(lum, vec3(g_ex, 0.0, w_ex)) * params.luma_scale, 1.0);
+        }
+        c = c * gain;
+        c = c + max(glow - c, vec3(0.0)) * params.glow_strength;
+    }
 
     let max_rgb = max(1.0, max(abs(c.x), max(abs(c.y), abs(c.z))));
     c = eotf_decode(c / max_rgb) * max_rgb;

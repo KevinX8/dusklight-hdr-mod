@@ -24,6 +24,7 @@ ConfigVarHandle cvar_color_boost = 0;
 ConfigVarHandle cvar_saturation = 0;
 ConfigVarHandle cvar_gamut = 0;
 ConfigVarHandle cvar_unclip_lighting = 0;
+ConfigVarHandle cvar_glow_strength = 0;
 ConfigVarHandle cvar_debug_view = 0;
 
 int64_t cvar_int(ConfigVarHandle handle, int64_t default_value) {
@@ -141,9 +142,13 @@ ModResult build_controls_tab(
     add_toggle(left, "Unclip Lighting", cvar_unclip_lighting,
         "Surfaces lit past white (sun, torches, lanterns) keep that extra brightness as HDR "
         "highlights. Materials still render exactly as on GameCube.");
+    add_number(left, "Glow Strength", cvar_glow_strength, 0, 2000, 50,
+        "Restores the color and brightness of stacked glowing effects (fire, magic, sparks) that "
+        "the GameCube clipped to white (x1000; 1000 = full recovery, 0 = off).");
 
     static const char* kDebugOptions[] = {
-        "Full grade", "1: EOTF", "2: Boost", "3: Saturation", "4: Gamut", "5: Clamp", "6: Input check"};
+        "Full grade", "1: EOTF", "2: Boost", "3: Saturation", "4: Gamut", "5: Clamp", "6: Input check",
+        "7: HDR buffers"};
     control = UI_CONTROL_DESC_INIT;
     control.kind = UI_CONTROL_SELECT;
     control.label = "Debug view";
@@ -152,7 +157,7 @@ ModResult build_controls_tab(
     control.binding = UI_BINDING_CONFIG_VAR;
     control.config_var = cvar_debug_view;
     control.options = kDebugOptions;
-    control.option_count = 7;
+    control.option_count = 8;
     add_control(left, control);
     return MOD_OK;
 }
@@ -207,6 +212,7 @@ ModResult settings_register(ModError* error) {
         {"saturation", 1000, cvar_saturation},
         {"gamut", 10, cvar_gamut},
         {"debugView", 0, cvar_debug_view},
+        {"glowStrength", 1000, cvar_glow_strength},
     };
     for (auto& var : ints) {
         if (register_int(var.name, var.def, var.handle, error) != MOD_OK) {

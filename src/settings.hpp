@@ -18,6 +18,7 @@ extern ConfigVarHandle cvar_color_boost;
 extern ConfigVarHandle cvar_saturation;
 extern ConfigVarHandle cvar_gamut;
 extern ConfigVarHandle cvar_unclip_lighting;
+extern ConfigVarHandle cvar_glow_strength;
 extern ConfigVarHandle cvar_debug_view;
 
 // Float-valued vars are stored as ints scaled by 1000.
