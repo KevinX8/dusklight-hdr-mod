@@ -35,8 +35,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: hdr_mod-linux-x86_64
-          path: build/mods/*.dusk
+          path: build/mods/hdr_mod.dusk
+          archive: false
           if-no-files-found: error
 
       - name: Attach to release
