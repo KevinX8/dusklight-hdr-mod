@@ -1,64 +1,23 @@
-# Dusklight Mod Template
+# HDR+ Grade (Dusklight mod)
 
-A standalone template for [Dusklight](https://github.com/TwilitRealm/dusklight) mods.
+A Special K-style SDR-to-HDR grade for Dusklight. It applies a perceptual and color boost, saturation and gamut expansion. Optionally, it restores lighting that the GameCube clipped, plus glow, using the engine's HDR side buffers.
 
-See the [Dusklight modding documentation](https://github.com/TwilitRealm/dusklight/blob/main/docs/modding.md)
-for the full mod API: services, hooking game functions, asset overlays, and more.
+**Linux only for now.** It needs HDR output, which requires the Vulkan backend and an HDR display. Enable **HDR Output** in Graphics settings.
 
-## Quick start
+## Engine requirement
 
-1. Click "Use this template" to create a new repository for your mod.
-2. Edit `mod.json.in`: set your mod's `id` (reverse-DNS style, e.g. `com.example.my_mod`),
-   `name`, `author`, and `description`.
-3. Rename the target in `CMakeLists.txt` (`add_mod(my_mod ...)`) (this names the `.dusk` file).
-4. Write your mod in `src/mod.cpp`.
-5. Build locally:
-   ```sh
-   cmake -B build
-   cmake --build build
-   ```
+This mod depends on engine changes that are not upstream yet:
 
-The result is `build/mods/<name>.dusk`. Copy it into the game's mods folder to try it:
+- [KevinX8/dusklight `hdr`](https://github.com/KevinX8/dusklight/tree/hdr): HDR output setting, GfxService 1.5 (HDR frame, scene texture, gain/glow side buffers).
+- [KevinX8/aurora `hdr`](https://github.com/KevinX8/aurora/tree/hdr): HDR swapchain, float present path, lighting gain/glow buffers.
+- [KevinX8/borealis `hdr`](https://github.com/KevinX8/borealis/tree/hdr): version override for the HDR build.
 
-- Windows: `%APPDATA%\TwilitRealm\Dusklight\mods`
-- Linux: `~/.local/share/TwilitRealm/Dusklight/mods`
-- macOS: `~/Library/Application Support/TwilitRealm/Dusklight/mods`
+The `hdr-fork` branch of the dusklight fork adds one commit that points the submodules at these forks. That makes it clone with `--recursive`. CI builds against that branch.
 
-During development, rebuild, copy and click **Reload** in the in-game mod manager to pick up changes.
-
-> [!IMPORTANT]
-> A mod built locally will only be valid for your own platform, and shouldn't be distributed.
-> The repository will build a [cross-platform bundle](#github-actions) for distribution. See below.
-
-## Updating to a new Dusklight version
-
-Change the `DUSKLIGHT_VERSION` line in `CMakeLists.txt` to the new release tag (or commit hash) and reconfigure. The
-pinned version is fetched into `dusklight/` automatically. Use the `dusklight/` checkout to browse game code, headers
-and mod services.
-
-> [!IMPORTANT]
-> The Dusklight checkout is for **reference only**. Mods use
-> [services](https://github.com/TwilitRealm/dusklight/blob/main/docs/modding.md#built-in-services) and
-> [hooks](https://github.com/TwilitRealm/dusklight/blob/main/docs/modding.md#hooking-game-functions) to interact with
-> game code.
-
-## GitHub Actions
-
-The included GitHub Actions workflow builds the mod for the following platforms:
-- Windows (AMD64 & ARM64)
-- macOS (Apple Silicon & Intel)
-- iOS (Apple Silicon)
-- Linux (x86_64 & aarch64)
-- Android (aarch64)
-
-It then merges the per-platform builds into a single `.dusk` supporting all platforms. (Artifact `mod-combined`) 
-
-Pushing a tag to the repository creates a GitHub release with the combined bundle.
-
-## For Dusklight developers
-
-Point the build at an existing checkout instead of fetching one:
+## Build
 
 ```sh
-cmake -B build -DDUSKLIGHT_DIR=~/path/to/dusklight
+cmake -B build -G Ninja                                   # fetches the pinned fork
+cmake -B build -DDUSKLIGHT_DIR=/path/to/dusklight        # or use a local hdr checkout
+cmake --build build                                       # -> build/mods/hdr_mod.dusk
 ```

@@ -9,7 +9,13 @@ endif ()
 
 project(hdr_mod VERSION 1.0.0 LANGUAGES CXX)
 
-# Point at the local Dusklight checkout (the in-tree sdk/) instead of fetching a release.
+# Needs the HDR engine changes (GfxService 1.5 HDR frame, side buffers). Until they are upstream,
+# build against the fork; -DDUSKLIGHT_DIR=/path/to/dusklight uses a local checkout instead.
+set(DUSKLIGHT_REPOSITORY "https://github.com/KevinX8/dusklight.git"
+        CACHE STRING "Dusklight git repository to fetch from")
+if (NOT DUSKLIGHT_VERSION)
+    set(DUSKLIGHT_VERSION "f88ce94047f40d915d3abb248971801f2bac2c38")  # KevinX8/dusklight hdr-fork
+endif ()
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchDusklight.cmake")
 add_subdirectory("${DUSKLIGHT_DIR}/sdk" dusklight-sdk EXCLUDE_FROM_ALL)
 
