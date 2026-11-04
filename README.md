@@ -2,11 +2,11 @@
 
 A Special K-style SDR-to-HDR grade for Dusklight. It applies a perceptual and color boost, saturation and gamut expansion. Optionally, it restores lighting that the GameCube clipped, plus glow, using the engine's HDR side buffers.
 
-It needs the **[Dusklight HDR fork](https://github.com/KevinX8/dusklight)**: official Dusklight has no HDR output yet, and this mod does nothing without it.
+It needs the **[Dusklight HDR fork](https://github.com/KevinX8/dusklight-hdr)**: official Dusklight has no HDR output yet, and this mod does nothing without it.
 
 ## Install
 
-1. Install the HDR engine from the **[fork release](https://github.com/KevinX8/dusklight/releases/tag/v2.0.3-hdr.1)** (see the [fork README](https://github.com/KevinX8/dusklight#readme) for platform notes).
+1. Install the HDR engine from the **[fork release](https://github.com/KevinX8/dusklight-hdr/releases/latest)** (see the [fork README](https://github.com/KevinX8/dusklight-hdr#readme) for platform notes).
 2. Download `hdr_mod.dusk` from the **[latest release](https://github.com/KevinX8/dusklight-hdr-mod/releases/latest)**. One file covers every platform.
 3. Copy it into your mods folder:
    - Windows: `%APPDATA%\TwilitRealm\Dusklight\mods`
@@ -32,7 +32,7 @@ Tested on Linux (Legion Go 2). Windows, Android and iOS are in testing; macOS is
 
 This mod depends on engine changes that are not upstream:
 
-- [KevinX8/dusklight `hdr`](https://github.com/KevinX8/dusklight/tree/hdr): HDR output setting, GfxService 1.5 (HDR frame, scene texture, gain/glow side buffers).
+- [KevinX8/dusklight-hdr `hdr`](https://github.com/KevinX8/dusklight-hdr/tree/hdr): HDR output setting, GfxService 1.5 (HDR frame, scene texture, gain/glow side buffers).
 - [KevinX8/aurora `hdr`](https://github.com/KevinX8/aurora/tree/hdr): HDR swapchain on Vulkan/D3D12/Metal, float present path, lighting gain/glow buffers.
 
 The `hdr-fork` branch of the dusklight fork points the submodules at these forks, so it clones with `--recursive`. CI builds against that branch.
