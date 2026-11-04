@@ -105,7 +105,7 @@ jobs:
       - name: Download platform bundles
         uses: actions/download-artifact@v8
         with:
-          pattern: mod-*
+          pattern: mod-*-*  # platform bundles only, not a rerun's mod-combined
           path: dist
 
       - name: Install symgen
